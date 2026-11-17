@@ -2,9 +2,12 @@
 
 On Windows, launch Gesture Control to move your primary-screen mouse pointer with
 the base of your palm (the wrist landmark). Move your hand to your own right and
-the pointer moves right. Start with an open hand. Close it into a fist to press
-the left mouse button, then open it to release. Keep the fist closed while moving
-to drag. Losing hand tracking releases a held click. Press **Esc** to quit, even
+the pointer moves right. Start with your thumb and index finger apart. Aim with your wrist,
+then touch those fingertips and separate them to click. The cursor locks onto
+the target as the pinch starts. A ring at the desktop pointer shows the left
+button is down. To drag, keep pinching and move your wrist deliberately, then
+separate your fingertips to drop. If tracking is lost, the button releases;
+separate your fingers before the next pinch. Press **Esc** to quit, even
 when another app has focus. Your physical mouse and touchpad remain available.
 
 From this checkout in PowerShell:

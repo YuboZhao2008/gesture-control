@@ -2,6 +2,7 @@ from dataclasses import replace
 
 import pytest
 
+from gesture_control.core.config import SmoothingConfig
 from gesture_control.core.types import FrameContext, Gesture, HandLandmarks, LandmarkIndex
 from gesture_control.cursor_tracking import CursorTracker
 from gesture_control.training.augmentation import source_observation
@@ -40,61 +41,87 @@ def test_cursor_uses_mirrored_wrist_inside_comfortable_bounds(
     assert cursor[2] is False
 
 
-def test_fist_debounces_both_transitions_and_ignores_thumb_contact() -> None:
-    tracker = CursorTracker()
-    fist = _hand(Gesture.FIST)
-    points = list(fist.landmarks)
-    points[LandmarkIndex.THUMB_TIP] = points[LandmarkIndex.INDEX_TIP]
-    fist = replace(fist, landmarks=tuple(points))
-    open_hand = _hand(Gesture.OPEN_PALM)
+def test_tap_locks_target_and_drag_starts_only_after_deliberate_motion() -> None:
+    tracker = CursorTracker(SmoothingConfig(enabled=False))
 
-    assert not _held(tracker, fist, 0)
-    assert not _held(tracker, open_hand, 0.03)
-    assert not _held(tracker, fist, 0.06)
-    assert not _held(tracker, fist, 0.10)
-    assert _held(tracker, fist, 0.13)
-    assert _held(tracker, open_hand, 0.15)
-    assert _held(tracker, fist, 0.18)
-    assert _held(tracker, open_hand, 0.20)
-    assert not _held(tracker, open_hand, 0.25)
+    def sample(gesture: Gesture, time: float, x: float) -> tuple[float, float, bool]:
+        result = tracker.update(_hand(gesture, x=x), time, image_aspect=_ASPECT)
+        assert result is not None
+        return result
 
-
-def test_hand_loss_releases_and_requires_new_dwell() -> None:
-    tracker = CursorTracker()
-    fist = _hand(Gesture.FIST)
-
-    assert not _held(tracker, fist, 0)
-    assert _held(tracker, fist, 0.07)
-    assert tracker.update(None, 0.08) is None
-    assert not _held(tracker, fist, 0.10)
-    assert _held(tracker, fist, 0.17)
+    aim = sample(Gesture.OPEN_PALM, 0, 0.5)
+    assert sample(Gesture.PINCH, 0.03, 0.502) == aim
+    down = sample(Gesture.PINCH, 0.065, 0.504)
+    assert down == (*aim[:2], True)
+    assert sample(Gesture.PINCH, 0.09, 0.501) == down
+    assert sample(Gesture.OPEN_PALM, 0.12, 0.511) == aim
+    sample(Gesture.OPEN_PALM, 0.14, 0.511)
+    sample(Gesture.PINCH, 0.16, 0.511)
+    assert sample(Gesture.PINCH, 0.20, 0.511)[2]
+    dragged = sample(Gesture.PINCH, 0.24, 0.65)
+    assert dragged[0] < aim[0] - 0.1 and dragged[2]
+    assert sample(Gesture.OPEN_PALM, 0.28, 0.66) == (*dragged[:2], False)
 
 
-@pytest.mark.parametrize(("hand_id", "arrival"), [("new-hand", 0.08), ("hand", 0.50)])
-def test_identity_change_or_long_gap_releases(hand_id: str, arrival: float) -> None:
-    tracker = CursorTracker()
-    fist = _hand(Gesture.FIST)
-
-    assert not _held(tracker, fist, 0)
-    assert _held(tracker, fist, 0.07)
-    assert not _held(tracker, replace(fist, hand_id=hand_id), arrival)
-
-
-def test_collapsed_finger_releases_immediately() -> None:
-    tracker = CursorTracker()
-    fist = _hand(Gesture.FIST)
-    points = list(fist.landmarks)
-    points[LandmarkIndex.INDEX_PIP] = points[LandmarkIndex.INDEX_MCP]
-    malformed = replace(fist, landmarks=tuple(points))
-
-    assert not _held(tracker, fist, 0)
-    assert _held(tracker, fist, 0.07)
-    assert not _held(tracker, malformed, 0.08)
-
-
-def test_pinch_does_not_trigger_click() -> None:
+@pytest.mark.parametrize("break_type", ["missing", "new-hand", "time-gap", "collapsed"])
+def test_tracking_discontinuity_requires_open_before_repress(break_type: str) -> None:
     tracker = CursorTracker()
     pinch = _hand(Gesture.PINCH)
-
+    opened = _hand(Gesture.OPEN_PALM)
     assert not _held(tracker, pinch, 0)
-    assert not _held(tracker, pinch, 0.10)
+    assert not _held(tracker, pinch, 0.1)
+    assert not _held(tracker, opened, 0.13)
+    assert not _held(tracker, pinch, 0.16)
+    assert _held(tracker, pinch, 0.20)
+    now = 0.24
+    if break_type == "missing":
+        assert tracker.update(None, 0.23) is None
+    elif break_type == "new-hand":
+        pinch = replace(pinch, hand_id="other")
+        opened = replace(opened, hand_id="other")
+    elif break_type == "time-gap":
+        now = 0.60
+    else:
+        points = list(pinch.landmarks)
+        points[LandmarkIndex.MIDDLE_MCP] = points[LandmarkIndex.WRIST]
+        assert not _held(tracker, replace(pinch, landmarks=tuple(points)), 0.23)
+    assert not _held(tracker, pinch, now)
+    assert not _held(tracker, pinch, now + 0.05)
+    assert not _held(tracker, opened, now + 0.10)
+    assert not _held(tracker, pinch, now + 0.15)
+    assert _held(tracker, pinch, now + 0.20)
+
+
+def test_single_noisy_contact_cannot_press() -> None:
+    tracker = CursorTracker()
+    opened, pinch = _hand(Gesture.OPEN_PALM), _hand(Gesture.PINCH)
+    for frame, hand in enumerate((opened, pinch, opened, pinch, opened)):
+        assert not _held(tracker, hand, frame / 30)
+
+
+def test_release_noise_cannot_start_a_second_press() -> None:
+    tracker = CursorTracker()
+    opened, pinch = _hand(Gesture.OPEN_PALM), _hand(Gesture.PINCH)
+    poses = [opened, pinch, pinch, opened, pinch, pinch, opened, opened, pinch, pinch]
+    states = [_held(tracker, hand, frame / 30) for frame, hand in enumerate(poses)]
+    assert states == [False, False, True, False, False, False, False, False, False, True]
+
+
+@pytest.mark.parametrize("adaptive", [True, False])
+def test_wrist_jitter_and_reacquisition(adaptive: bool) -> None:
+    tracker = CursorTracker(SmoothingConfig(adaptive=adaptive))
+    raw = CursorTracker(SmoothingConfig(enabled=False))
+    offsets: list[float] = []
+    for index in range(60):
+        x = 0.503 if index % 2 else 0.497
+        hand = _hand(Gesture.OPEN_PALM, x=x)
+        smooth = tracker.update(hand, index / 30)
+        direct = raw.update(hand, index / 30)
+        assert smooth and direct
+        assert direct[0] == pytest.approx((0.85 - x) / 0.70)
+        if index >= 30:
+            offsets.append(abs(smooth[0] - 0.5))
+    assert max(offsets) < 0.0012
+    tracker.update(None, 2)
+    hand = _hand(Gesture.OPEN_PALM, x=0.8)
+    assert tracker.update(hand, 2.1) == raw.update(hand, 2.1)

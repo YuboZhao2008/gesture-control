@@ -1,4 +1,4 @@
-"""Camera loop for wrist movement and fist-controlled desktop dragging."""
+"""Camera loop for wrist movement and pinch-controlled desktop dragging."""
 
 from __future__ import annotations
 
@@ -52,7 +52,10 @@ def _preview(
         cv2.circle(preview, center, 9, (20, 20, 20), 4, cv2.LINE_AA)
         cv2.circle(preview, center, 9, color, 2, cv2.LINE_AA)
         status = "Left button held" if pointer[2] else "Moving cursor"
-    for y, label in ((24, status), (48, "Close fist to drag | Open to release | Esc to quit")):
+    for y, label in (
+        (24, status),
+        (48, "Pinch to click or drag | Separate to release | Esc to quit"),
+    ):
         cv2.putText(preview, label, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3)
         cv2.putText(preview, label, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
     cv2.imshow(WINDOW, preview)
@@ -76,18 +79,23 @@ def run_cursor(
     """Track wrists and control the mouse. Headless runs skip all desktop effects."""
     _validate_stream(max_frames, headless, camera_width, camera_height)
     from .cursor_tracking import CursorTracker
-    from .windows_mouse import WindowsMouse
 
-    tracker = CursorTracker()
+    tracker = CursorTracker(config.smoothing, config.recognition)
     diagnostics = config.debug if diagnostics is None else diagnostics
     with ExitStack() as resources:
         detector, camera = _vision_resources(
             resources, config, model_path, camera_width, camera_height, latest_frame
         )
+        indicator = None
         mouse = None
         if not headless:
+            from .hold_indicator import HoldIndicator
+            from .windows_mouse import WindowsMouse
+
             cv2.namedWindow(WINDOW, cv2.WINDOW_AUTOSIZE)
             resources.callback(_cleanup, "cursor preview", _close_preview)
+            indicator = HoldIndicator()
+            resources.callback(indicator.close)
             mouse = WindowsMouse()
             # Register last to release before waiting for camera shutdown, even on errors.
             resources.callback(mouse.release)
@@ -113,6 +121,8 @@ def run_cursor(
                         mouse.release()
                     else:
                         mouse.update(*pointer)
+                    assert indicator is not None
+                    indicator.show(pointer is not None and pointer[2])
                     if not _preview(captured, frame, pointer, diagnostics):
                         break
         LOGGER.info("Processed %d cursor frames", count)

@@ -6,8 +6,15 @@ import cv2
 import numpy as np
 import pytest
 
-from gesture_control import cursor_runner, cursor_tracking, runner, vision, windows_mouse
-from gesture_control.core.config import AppConfig
+from gesture_control import (
+    cursor_runner,
+    cursor_tracking,
+    hold_indicator,
+    runner,
+    vision,
+    windows_mouse,
+)
+from gesture_control.core.config import AppConfig, RecognitionConfig, SmoothingConfig
 from gesture_control.core.types import FrameContext, Gesture, HandFrame, HandLandmarks
 from gesture_control.ui.drawing import Image
 from gesture_control.vision import CameraFrame
@@ -66,6 +73,9 @@ def test_live_cursor_loop(monkeypatch: pytest.MonkeyPatch, stop: str) -> None:
             calls.append("detector closed")
 
     class Tracker:
+        def __init__(self, smoothing: SmoothingConfig, recognition: RecognitionConfig) -> None:
+            assert smoothing.enabled
+
         def update(
             self, observed: HandLandmarks | None, timestamp_s: float, *, image_aspect: float
         ) -> tuple[float, float, bool] | None:
@@ -74,6 +84,16 @@ def test_live_cursor_loop(monkeypatch: pytest.MonkeyPatch, stop: str) -> None:
             assert hands[index] == (() if observed is None else (observed,))
             calls.append("track")
             return (0.2, 0.7, True) if observed else None
+
+    class Indicator:
+        def __init__(self) -> None:
+            assert stop != "headless"
+
+        def show(self, pressed: bool) -> None:
+            assert pressed == (calls[-1] == "hold")
+
+        def close(self) -> None:
+            pass
 
     class Mouse:
         def __init__(self) -> None:
@@ -105,6 +125,7 @@ def test_live_cursor_loop(monkeypatch: pytest.MonkeyPatch, stop: str) -> None:
     monkeypatch.setattr(vision, "MediaPipeHandDetector", Detector)
     monkeypatch.setattr(vision, "OpenCVCamera", Camera)
     monkeypatch.setattr(cursor_tracking, "CursorTracker", Tracker)
+    monkeypatch.setattr(hold_indicator, "HoldIndicator", Indicator)
     monkeypatch.setattr(windows_mouse, "WindowsMouse", Mouse)
     monkeypatch.setattr(cursor_runner, "_preview", capture_preview)
     monkeypatch.setattr(cv2, "getWindowProperty", lambda name, prop: 1)
