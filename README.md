@@ -1,36 +1,52 @@
 # Gesture Control
 
-On Windows, launch Gesture Control to move your primary-screen mouse pointer with
-the base of your palm (the wrist landmark). Move your hand to your own right and
-the pointer moves right. Start with your thumb and index finger apart. Aim with your wrist,
-then touch those fingertips and separate them to click. The cursor locks onto
-the target as the pinch starts. A ring at the desktop pointer shows the left
-button is down. To drag, keep pinching and move your wrist deliberately, then
-separate your fingertips to drop. If tracking is lost, the button releases;
-separate your fingers before the next pinch. Press **Esc** to quit, even
-when another app has focus. Your physical mouse and touchpad remain available.
+Use a webcam as a Windows mouse. Move your wrist to aim, pinch your thumb and
+index finger to click, and keep them together to drag. Fast sweeps cover the
+screen with less wrist travel. Slow movements give you finer control over small
+targets. An optional drawing board lets you sketch, erase, and export a PNG.
 
-Move your wrist briskly to cross the screen, then slow down for small targets.
-You can take your hand out of view and bring it back in a comfortable position.
-Cursor mode resumes at its last position. Fast movement defaults to 3x gain;
-add `--sensitivity 4` for more reach or `--sensitivity 2` for less.
-Slow aiming uses the same fine control at every setting.
+## Installation
 
-From this checkout in PowerShell:
+Requires Python 3.12+, a webcam, and a desktop display for the interactive UI.
+From the repository root in PowerShell, create a venv if one does not exist:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev,vision,ui]"
+Invoke-WebRequest -Uri 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task' -OutFile models/hand_landmarker.task
+```
+
+Both extras use **opencv-contrib-python**, which satisfies MediaPipe and provides
+desktop `cv2`. Do not also install `opencv-python` or a headless OpenCV distribution
+in this venv: they share module files. The model is downloaded explicitly, kept
+locally, and ignored by Git. The app never downloads it automatically.
+On POSIX, use `.venv/bin/python` for the commands below.
+
+## Use the desktop cursor
+
+Launch from the repository root in PowerShell:
 
 ```powershell
 .\.venv\Scripts\python.exe -m gesture_control
 ```
 
-## Optional drawing board
+| Action | Gesture |
+| --- | --- |
+| Move | Start with your thumb and index finger apart. Move your wrist in the direction you want the pointer to go. |
+| Click | Aim, touch your thumb and index fingertips together, then separate them. The target locks as the pinch begins. |
+| Drag | Keep the pinch closed and move your wrist. A ring around the desktop pointer means the left button is down. Separate your fingers to drop. |
+| Rest or reposition | Take your hand out of view. Tracking loss releases the button. Bring your hand back with your fingertips apart to resume at the last cursor position. |
+| Quit | Press **Esc**, even while another app has focus. |
+
+The cursor controls the primary monitor. Your mouse and touchpad remain available.
+Fast movement defaults to 3x gain. Add `--sensitivity 4` for more reach or
+`--sensitivity 2` for less. The range is 1 to 6, and slow aiming uses the same
+fine control at every setting.
+
+## Drawing board
 
 Launch with `--drawing-mode` for the original drawing board and its four-corner
 calibration. The drawing controls and screenshots below apply to that mode.
-
-A Python webcam prototype that turns hand landmarks into stable gestures and an
-interactive drawing canvas. Point to move the cursor, pinch to draw or erase, and calibrate
-a comfortable working area. Includes a live skeleton, raw/stable gesture diagnostics,
-four-corner calibration, and PNG export.
 
 ![Gesture Control interface, synthetic preview](docs/images/ui-normal.png)
 
@@ -40,7 +56,15 @@ and optional advanced diagnostics. The screenshot uses synthetic observations;
 its displayed FPS is illustrative. See [eraser preview](docs/images/ui-eraser.png),
 [calibration preview](docs/images/ui-calibration.png), and [debug preview](docs/images/ui-debug.png).
 
-## Architecture
+## How it works
+
+Both modes read webcam frames through OpenCV and track one hand with MediaPipe.
+In desktop mode, wrist movement drives the Windows pointer. The tracker smooths
+wrist coordinates, varies pointer speed with hand speed, and measures the gap
+between thumb and index finger relative to palm size. The Windows input adapter
+sends mouse movement and button transitions. A click-through ring shows a hold.
+
+The drawing mode uses this pipeline:
 
 ```text
 OpenCVCamera -> MediaPipeHandDetector -> GeometricGestureRecognizer
@@ -66,23 +90,6 @@ pixels. Preview resizing never changes interaction coordinates.
 See [shared contracts](ARCHITECTURE.md), [vision setup and APIs](src/gesture_control/vision/README.md),
 [recognition and temporal semantics](src/gesture_control/recognition/README.md),
 and [UI integration and command schemas](src/gesture_control/ui/README.md).
-
-## Installation
-
-Requires Python 3.12+, a webcam, and a desktop display for the interactive UI.
-From the repository root in PowerShell, create a venv if one does not exist:
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[dev,vision,ui]"
-Invoke-WebRequest -Uri 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task' -OutFile models/hand_landmarker.task
-```
-
-Both extras use **opencv-contrib-python**, which satisfies MediaPipe and provides
-desktop `cv2`. Do not also install `opencv-python` or a headless OpenCV distribution
-in this venv: they share module files. The model is downloaded explicitly, kept
-locally, and ignored by Git. The app never downloads it automatically.
-On POSIX, use `.venv/bin/python` for the commands below.
 
 ## Drawing board launch
 
@@ -120,7 +127,7 @@ drawing, mapper state, temporal state, camera, detector, and UI windows each rec
 a cleanup attempt. Failures are logged and do not block remaining cleanup or replace
 the original processing exception. Startup/runtime errors return a nonzero exit code.
 
-## Controls and gestures
+## Drawing controls and gestures
 
 | Key | Action |
 | --- | --- |
@@ -170,7 +177,7 @@ motion lag. Cutoffs use Hz and speed uses source-image fractions per second.
 Set `adaptive = false` for the legacy `alpha` filter, or `enabled = false` to
 bypass filtering. See the [deterministic motion comparison](src/gesture_control/recognition/README.md#motion-tuning-and-measurements).
 
-## Calibration
+## Drawing calibration
 
 Press C, make POINT, then place the fingertip at each comfortable source-image
 corner: **top left, top right, bottom right, bottom left**. Hold still and press

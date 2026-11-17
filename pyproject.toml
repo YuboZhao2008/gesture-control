@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gesture-control"
 version = "0.1.0"
-description = "Real-time hand gesture recognition, calibration, and drawing prototype"
+description = "Webcam-driven Windows mouse with wrist aiming, pinch clicks and drags, and an optional drawing canvas"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []

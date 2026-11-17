@@ -1,7 +1,8 @@
 # Architecture and shared contracts
 
-This repository implements vision, geometric recognition, temporal processing, and
-an internal drawing UI on top of shared contracts. Keep the core independent of camera backends, array libraries,
+The Windows cursor and optional drawing board share camera capture and hand detection.
+The cursor maps wrist motion and pinches to desktop mouse input. The drawing board
+uses geometric recognition and temporal processing to update its canvas. Keep the core independent of camera backends, array libraries,
 model frameworks, GUI frameworks, and operating-system input APIs.
 
 ## Module boundaries and ownership
