@@ -255,6 +255,7 @@ def test_cli_forwards_capture_and_diagnostic_options(
     assert (
         runner.main(
             [
+                "--drawing-mode",
                 "--headless",
                 "--max-frames",
                 "3",
@@ -291,7 +292,7 @@ def test_cli_forwards_profile_warmup_and_writes_report(
         return 3
 
     monkeypatch.setattr(runner, "run", fake_run)
-    assert runner.main(["--profile", str(path), "--profile-warmup", "2"]) == 0
+    assert runner.main(["--drawing-mode", "--profile", str(path), "--profile-warmup", "2"]) == 0
     report = json.loads(path.read_text(encoding="utf-8"))
     assert report["retained_frames"] == 1
     assert report["warmup_frames"] == 2
