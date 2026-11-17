@@ -73,7 +73,10 @@ def test_live_cursor_loop(monkeypatch: pytest.MonkeyPatch, stop: str) -> None:
             calls.append("detector closed")
 
     class Tracker:
-        def __init__(self, smoothing: SmoothingConfig, recognition: RecognitionConfig) -> None:
+        def __init__(
+            self, smoothing: SmoothingConfig, recognition: RecognitionConfig, *, sensitivity: float
+        ) -> None:
+            assert sensitivity == 3.0
             assert smoothing.enabled
 
         def update(

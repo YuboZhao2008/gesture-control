@@ -164,6 +164,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--calibration", type=Path, default=Path("recordings/calibration.json"))
     parser.add_argument("--drawing", type=Path, default=Path("recordings/drawing.png"))
     parser.add_argument("--max-frames", type=int, help="Exit after N frames (hardware smoke check)")
+    parser.add_argument(
+        "--sensitivity",
+        type=float,
+        default=3.0,
+        help="Desktop cursor gain for fast sweeps (1 to 6, default 3)",
+    )
     parser.add_argument("--camera-width", type=int, default=640)
     parser.add_argument("--camera-height", type=int, default=480)
     parser.add_argument(
@@ -202,6 +208,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--profile-warmup must be nonnegative")
     if args.camera_width < 1 or args.camera_height < 1:
         parser.error("--camera-width and --camera-height must be positive")
+    if not 1 <= args.sensitivity <= 6:
+        parser.error("--sensitivity must be between 1 and 6")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     try:
         config = load_config(args.config) if args.config else AppConfig()
@@ -215,7 +223,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_stream = (
             partial(run, calibration_path=args.calibration, drawing_path=args.drawing)
             if args.drawing_mode
-            else run_cursor
+            else partial(run_cursor, sensitivity=args.sensitivity)
         )
         run_stream(
             config,

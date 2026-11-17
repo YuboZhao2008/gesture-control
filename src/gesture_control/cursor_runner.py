@@ -75,12 +75,13 @@ def run_cursor(
     camera_height: int = 480,
     latest_frame: bool = True,
     diagnostics: bool | None = None,
+    sensitivity: float = 3.0,
 ) -> int:
     """Track wrists and control the mouse. Headless runs skip all desktop effects."""
     _validate_stream(max_frames, headless, camera_width, camera_height)
     from .cursor_tracking import CursorTracker
 
-    tracker = CursorTracker(config.smoothing, config.recognition)
+    tracker = CursorTracker(config.smoothing, config.recognition, sensitivity=sensitivity)
     diagnostics = config.debug if diagnostics is None else diagnostics
     with ExitStack() as resources:
         detector, camera = _vision_resources(

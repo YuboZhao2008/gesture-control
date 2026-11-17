@@ -111,17 +111,45 @@ def test_release_noise_cannot_start_a_second_press() -> None:
 def test_wrist_jitter_and_reacquisition(adaptive: bool) -> None:
     tracker = CursorTracker(SmoothingConfig(adaptive=adaptive))
     raw = CursorTracker(SmoothingConfig(enabled=False))
-    offsets: list[float] = []
+    positions: list[float] = []
+    raw_positions: list[float] = []
     for index in range(60):
         x = 0.503 if index % 2 else 0.497
         hand = _hand(Gesture.OPEN_PALM, x=x)
         smooth = tracker.update(hand, index / 30)
         direct = raw.update(hand, index / 30)
         assert smooth and direct
-        assert direct[0] == pytest.approx((0.85 - x) / 0.70)
         if index >= 30:
-            offsets.append(abs(smooth[0] - 0.5))
-    assert max(offsets) < 0.0012
+            positions.append(smooth[0])
+            raw_positions.append(direct[0])
+    assert max(positions) - min(positions) < 0.0024
+    assert max(positions) - min(positions) < (max(raw_positions) - min(raw_positions)) / 3
     tracker.update(None, 2)
     hand = _hand(Gesture.OPEN_PALM, x=0.8)
-    assert tracker.update(hand, 2.1) == raw.update(hand, 2.1)
+    reacquired = tracker.update(hand, 2.1)
+    assert reacquired is not None and reacquired[0] == positions[-1]
+
+
+@pytest.mark.parametrize("fps", [20, 30, 60])
+def test_fast_sweep_travels_far_and_slow_corrections_stay_precise(fps: int) -> None:
+    def travel(distance: float, duration: float) -> float:
+        tracker = CursorTracker()
+        frames = round(duration * fps)
+        for i in range(frames + fps):
+            x = 0.5 - distance * min(i / frames, 1)
+            cursor = tracker.update(_hand(Gesture.OPEN_PALM, x=x), i / fps)
+        assert cursor is not None
+        return cursor[0] - 0.5
+
+    assert 0.46 < travel(0.12, 0.3) <= 0.5
+    assert 0.005 < travel(0.006, 1) < 0.007
+
+
+def test_screen_edge_reverses_without_traversing_unused_camera_area() -> None:
+    tracker = CursorTracker()
+    for i in range(21):
+        p = tracker.update(_hand(Gesture.OPEN_PALM, x=0.5 - i * 0.015), i / 30)
+    assert p and p[0] == 1
+    for i in range(1, 6):
+        p = tracker.update(_hand(Gesture.OPEN_PALM, x=0.2 + i * 0.004), (20 + i) / 30)
+    assert p and p[0] < 0.99

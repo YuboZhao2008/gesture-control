@@ -10,6 +10,12 @@ separate your fingertips to drop. If tracking is lost, the button releases;
 separate your fingers before the next pinch. Press **Esc** to quit, even
 when another app has focus. Your physical mouse and touchpad remain available.
 
+Move your wrist briskly to cross the screen, then slow down for small targets.
+You can take your hand out of view and bring it back in a comfortable position.
+Cursor mode resumes at its last position. Fast movement defaults to 3x gain;
+add `--sensitivity 4` for more reach or `--sensitivity 2` for less.
+Slow aiming uses the same fine control at every setting.
+
 From this checkout in PowerShell:
 
 ```powershell
