@@ -1,5 +1,23 @@
 # Gesture Control
 
+On Windows, launch Gesture Control to move your primary-screen mouse pointer with
+the base of your palm (the wrist landmark). Move your hand to your own right and
+the pointer moves right. Start with an open hand. Close it into a fist to press
+the left mouse button, then open it to release. Keep the fist closed while moving
+to drag. Losing hand tracking releases a held click. Press **Esc** to quit, even
+when another app has focus. Your physical mouse and touchpad remain available.
+
+From this checkout in PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe -m gesture_control
+```
+
+## Optional drawing board
+
+Launch with `--drawing-mode` for the original drawing board and its four-corner
+calibration. The drawing controls and screenshots below apply to that mode.
+
 A Python webcam prototype that turns hand landmarks into stable gestures and an
 interactive drawing canvas. Point to move the cursor, pinch to draw or erase, and calibrate
 a comfortable working area. Includes a live skeleton, raw/stable gesture diagnostics,
@@ -57,10 +75,10 @@ in this venv: they share module files. The model is downloaded explicitly, kept
 locally, and ignored by Git. The app never downloads it automatically.
 On POSIX, use `.venv/bin/python` for the commands below.
 
-## Launch
+## Drawing board launch
 
 ```powershell
-.\.venv\Scripts\python.exe -m gesture_control
+.\.venv\Scripts\python.exe -m gesture_control --drawing-mode
 ```
 
 Keep the Gesture Studio window focused for keyboard controls. Capture and preview
@@ -69,8 +87,8 @@ actual capture size and timing come from the camera. The drawing surface default
 to 1920x1080, displayed at a smaller size without changing export resolution.
 
 ```powershell
-.\.venv\Scripts\python.exe -m gesture_control --config configs/default.toml
-.\.venv\Scripts\python.exe -m gesture_control --help
+.\.venv\Scripts\python.exe -m gesture_control --drawing-mode --config configs/default.toml
+.\.venv\Scripts\python.exe -m gesture_control --drawing-mode --help
 ```
 
 `--model`, `--calibration`, and `--drawing` select file paths (relative to the current
@@ -185,8 +203,8 @@ Optional hardware checks (the first opens a window; the second still processes
 camera frames and renders in memory):
 
 ```powershell
-.\.venv\Scripts\python.exe -m gesture_control --max-frames 30
-.\.venv\Scripts\python.exe -m gesture_control --headless --max-frames 30
+.\.venv\Scripts\python.exe -m gesture_control --drawing-mode --max-frames 30
+.\.venv\Scripts\python.exe -m gesture_control --drawing-mode --headless --max-frames 30
 ```
 
 For manual acceptance, verify skeleton acquisition, POINT cursor movement, PINCH
@@ -215,7 +233,7 @@ The [initial architecture review](PERFORMANCE.md) explains the measured bottlene
 To collect stage timings locally without saving webcam images:
 
 ```powershell
-.\.venv\Scripts\python.exe -m gesture_control --max-frames 960 --profile-warmup 60 --profile recordings/performance.json
+.\.venv\Scripts\python.exe -m gesture_control --drawing-mode --max-frames 960 --profile-warmup 60 --profile recordings/performance.json
 .\.venv\Scripts\python.exe scripts/benchmark_pipeline.py --calibrated --diagnostics off --output recordings/synthetic-performance.json
 .\.venv\Scripts\python.exe scripts/benchmark_eraser.py --tool eraser --output recordings/eraser-performance.json
 ```
@@ -254,7 +272,7 @@ The lead owns the final result and coordinates specialists directly.
 
 ## Limitations
 
-- One hand and one owned stroke at a time; no desktop mouse/keyboard automation.
+- Drawing mode supports one hand and one owned stroke at a time.
 - Geometric thresholds are not a trained classifier or a measured accuracy claim.
   Occlusion, depth errors, edge-on poses, lighting, and individual anatomy affect results.
   Thumb/index contact can take pinch priority even in a fist.

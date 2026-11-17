@@ -216,8 +216,8 @@ pinch companions and emits one stroke end. Gesture transitions precede pointers.
 
 The runner owns resource cleanup through independently guarded callbacks, including
 partial startup, capture errors, presentation errors, and keyboard interruption.
-Cleanup failures are logged while later resources are still closed. No desktop input
-is synthesized. UI rendering may shrink the preview of the canvas while preserving
+Cleanup failures are logged while later resources are still closed. Drawing mode keeps its output on the canvas. The default Windows cursor mode
+uses wrist positions and fist state to control the primary-screen mouse pointer. UI rendering may shrink the preview of the canvas while preserving
 its configured pixel resolution and source-to-workspace calibration transform.
 Calibration persistence and internal drawing are implemented by `ui/`; the general
 `control/` package remains an extension point for future adapters.
