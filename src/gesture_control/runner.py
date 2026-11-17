@@ -9,12 +9,17 @@ import platform
 from collections.abc import Callable, Sequence
 from contextlib import ExitStack, nullcontext
 from dataclasses import asdict
+from functools import partial
 from importlib.metadata import version
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .app import GestureControlApp
 from .core.config import AppConfig, load_config
 from .core.performance import PerformanceMonitor
+
+if TYPE_CHECKING:
+    from .vision import MediaPipeHandDetector, OpenCVCamera
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +30,43 @@ def _cleanup(name: str, action: Callable[[], object]) -> None:
         action()
     except Exception:
         LOGGER.exception("Cleanup failed: %s", name)
+
+
+def _validate_stream(
+    max_frames: int | None, headless: bool, camera_width: int, camera_height: int
+) -> None:
+    if max_frames is not None and max_frames < 1:
+        raise ValueError("max_frames must be positive")
+    if headless and max_frames is None:
+        raise ValueError("headless mode requires max_frames")
+    for name, dimension in (("camera_width", camera_width), ("camera_height", camera_height)):
+        if isinstance(dimension, bool) or not isinstance(dimension, int) or dimension < 1:
+            raise ValueError(f"{name} must be a positive integer")
+
+
+def _vision_resources(
+    resources: ExitStack,
+    config: AppConfig,
+    model_path: str | Path,
+    camera_width: int,
+    camera_height: int,
+    latest_frame: bool,
+) -> tuple[MediaPipeHandDetector, OpenCVCamera]:
+    from .vision import MediaPipeHandDetector, OpenCVCamera
+
+    detector = MediaPipeHandDetector(
+        model_path, min_detection_confidence=config.camera.min_detection_confidence
+    )
+    resources.callback(_cleanup, "detector", detector.close)
+    camera = OpenCVCamera(
+        index=config.camera.index,
+        fps=config.camera.target_fps,
+        width=camera_width,
+        height=camera_height,
+        latest_frame=latest_frame,
+    )
+    resources.callback(_cleanup, "camera", camera.close)
+    return detector, camera
 
 
 def run(
@@ -46,13 +88,7 @@ def run(
     Headless mode still renders each frame, but opens no windows. It requires a
     finite frame limit and is intended for hardware smoke checks, not interaction.
     """
-    if max_frames is not None and max_frames < 1:
-        raise ValueError("max_frames must be positive")
-    if headless and max_frames is None:
-        raise ValueError("headless mode requires max_frames")
-    for name, dimension in (("camera_width", camera_width), ("camera_height", camera_height)):
-        if isinstance(dimension, bool) or not isinstance(dimension, int) or dimension < 1:
-            raise ValueError(f"{name} must be a positive integer")
+    _validate_stream(max_frames, headless, camera_width, camera_height)
 
     # Optional dependencies are loaded only after CLI argument parsing.
     import cv2
@@ -60,7 +96,7 @@ def run(
     from .recognition import GeometricGestureRecognizer
     from .temporal import GestureTemporalProcessor
     from .ui.demo import DemoUI
-    from .vision import MediaPipeHandDetector, OpenCVCamera, PalmNormalizer
+    from .vision import PalmNormalizer
 
     with ExitStack() as resources:
         resources.callback(_cleanup, "UI windows", cv2.destroyAllWindows)
@@ -72,18 +108,9 @@ def run(
         )
         resources.callback(_cleanup, "UI", ui.close)
         ui.diagnostics = config.debug if diagnostics is None else diagnostics
-        detector = MediaPipeHandDetector(
-            model_path, min_detection_confidence=config.camera.min_detection_confidence
+        detector, camera = _vision_resources(
+            resources, config, model_path, camera_width, camera_height, latest_frame
         )
-        resources.callback(_cleanup, "detector", detector.close)
-        camera = OpenCVCamera(
-            index=config.camera.index,
-            fps=config.camera.target_fps,
-            width=camera_width,
-            height=camera_height,
-            latest_frame=latest_frame,
-        )
-        resources.callback(_cleanup, "camera", camera.close)
         temporal = GestureTemporalProcessor(config.temporal, config.recognition, config.smoothing)
         resources.callback(_cleanup, "temporal state", temporal.reset)
         resources.callback(_cleanup, "drawing mapper", ui.mapper.reset)
@@ -126,7 +153,10 @@ def run(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Gesture Studio: point to move, pinch to draw")
+    parser = argparse.ArgumentParser(description="Move the Windows cursor with your wrist")
+    parser.add_argument(
+        "--drawing-mode", action="store_true", help="Launch the internal point-and-pinch canvas"
+    )
     parser.add_argument(
         "--config", type=Path, help="AppConfig TOML/JSON; otherwise built-in defaults"
     )
@@ -159,7 +189,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--profile-warmup", type=int, default=30, help="Exclude initial frames (default 30)"
     )
     parser.add_argument(
-        "--headless", action="store_true", help="Render without windows; needs frame limit"
+        "--headless",
+        action="store_true",
+        help="Dry run without windows or desktop input (requires --max-frames)",
     )
     args = parser.parse_args(argv)
     if args.max_frames is not None and args.max_frames < 1:
@@ -178,11 +210,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         performance = (
             PerformanceMonitor(warmup_frames=args.profile_warmup) if args.profile else None
         )
-        run(
+        from .cursor_runner import run_cursor
+
+        run_stream = (
+            partial(run, calibration_path=args.calibration, drawing_path=args.drawing)
+            if args.drawing_mode
+            else run_cursor
+        )
+        run_stream(
             config,
             model_path=args.model,
-            calibration_path=args.calibration,
-            drawing_path=args.drawing,
             max_frames=args.max_frames,
             headless=args.headless,
             performance=performance,
@@ -201,6 +238,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 },
                 "config": asdict(config),
                 "headless": args.headless,
+                "mode": "drawing" if args.drawing_mode else "cursor",
                 "model": str(args.model),
             }
             args.profile.parent.mkdir(parents=True, exist_ok=True)
